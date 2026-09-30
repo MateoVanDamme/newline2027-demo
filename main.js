@@ -131,200 +131,22 @@ function buildBoardAtlas() {
   return tex;
 }
 
-// ---------------------------------------------------------------- shaders
-// Pass 1 (low res, blocky): fog, beams, QR panels and the big heading signs. Alpha = fog
-// transmittance at the small-text sign planes.
-// Pass 2 (full res): only the small text (BOARDS with hi: true), composited over pass 1.
+// ---------------------------------------------------------------- shaders (shaders/*.glsl, loaded at startup)
 const NS = 12, NBEAM = 5;
-const common = `
-precision highp float;
-#define NS ${NS}
+const DEFINES = `#define NS ${NS}
 #define NB ${NB}
-#define STEPS 64
-#define FAR 90.0
-uniform float uTime; uniform vec2 uRes; uniform vec3 uCamPos; uniform mat3 uCamRot;
-uniform sampler2D uAtlas; uniform vec4 uSigns[NS]; uniform vec4 uInfo[NS];
-uniform sampler2D uBoard; uniform vec4 uBill[NB]; uniform vec4 uBillInfo[NB]; uniform float uHi[NB];
-uniform float uGlitch; uniform float uDim;
-varying vec2 vUv;
-
-float h11(float p){ p=fract(p*0.1031); p*=p+33.33; p*=p+p; return fract(p); }
-float h12(vec2 p){ vec3 p3=fract(vec3(p.xyx)*0.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z); }
-float h13(vec3 p3){ p3=fract(p3*0.1031); p3+=dot(p3,p3.zyx+31.32); return fract((p3.x+p3.y)*p3.z); }
-float vnoise(vec3 p){ vec3 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
-  return mix(mix(mix(h13(i),h13(i+vec3(1,0,0)),f.x),mix(h13(i+vec3(0,1,0)),h13(i+vec3(1,1,0)),f.x),f.y),
-             mix(mix(h13(i+vec3(0,0,1)),h13(i+vec3(1,0,1)),f.x),mix(h13(i+vec3(0,1,1)),h13(i+vec3(1,1,1)),f.x),f.y),f.z); }
-float fbm(vec3 p){ float a=0.5,s=0.; for(int i=0;i<4;i++){ s+=a*vnoise(p); p=p*2.07+vec3(1.7,9.2,3.1); a*=0.5; } return s; }
-
-float density(vec3 p){
-  float d = fbm(p*0.22 + vec3(0.0, uTime*0.04, uTime*0.09));
-  d = smoothstep(0.42, 0.78, d) * 0.9;
-  float st = step(0.93, h13(floor(p*1.5) + floor(uTime*9.0)*vec3(0.37,0.11,0.53)));
-  return 0.04 + d + st*0.6;
-}
-
-float lineD(vec3 p, vec3 a, vec3 d){ vec3 q=p-a; return length(q - d*dot(q,d)); }
-
-vec2 beams(vec3 p){
-  const float P = 26.0;
-  float cell = floor(p.z/P);
-  vec3 q = vec3(p.xy, p.z - (cell+0.5)*P);
-  float L = 0.0, S = 0.0;
-  for(int i=0;i<${NBEAM};i++){
-    float fi = float(i);
-    float r = h11(cell*7.13 + fi*3.7);
-    float ang = r*6.2831 + uTime*(0.25 + 0.2*r)*(mod(fi,2.0)<1.0?1.0:-1.0);
-    vec3 a = vec3((h11(r+1.3)-0.5)*9.0, (h11(r+2.9)-0.5)*7.0, (h11(r+4.1)-0.5)*P*0.8);
-    vec3 d = normalize(vec3(cos(ang), sin(ang), 0.35*sin(uTime*0.13 + fi)));
-    float dist = lineD(q, a, d);
-    float flick = 0.7 + 0.3*step(0.2, h11(floor(uTime*24.0) + fi*11.0));
-    float b = 0.11/(dist*dist + 0.02) * flick;
-    if (i < 3) L += b; else S += b*0.9;
-  }
-  vec3 r1 = vec3(4.5 + sin(uTime*0.3)*1.5, -2.5, 0.0);
-  vec3 r2 = vec3(-5.0, 3.0 + cos(uTime*0.21)*1.2, 0.0);
-  float dz = length(p.xy - r1.xy); L += 0.07/(dz*dz + 0.05);
-  dz = length(p.xy - r2.xy);       S += 0.05/(dz*dz + 0.05);
-  return vec2(L, S);
-}
-
-// camera ray for this pixel, including the row glitch (identical in both passes)
-vec3 rayDir(){
-  vec2 uv = (vUv*2.0-1.0); uv.x *= uRes.x/uRes.y;
-  float row = floor(vUv.y*48.0);
-  float gl = h12(vec2(row, floor(uTime*12.0)));
-  if (gl > 0.965 - uGlitch) uv.x += (h12(vec2(row, 3.0))-0.5)*0.35;
-  return uCamRot * normalize(vec3(uv, -1.45));
-}
-
-// heading sign letter test; returns 1 on a letter and sets col / t
-float billHit(int i, vec3 ro, vec3 rd, float tHit, out vec3 col, out float t){
-  vec4 s = uBill[i]; vec4 inf = uBillInfo[i];
-  col = vec3(0.0);
-  t = (s.z - ro.z) / rd.z;
-  if (rd.z >= -1e-4 || t <= 0.05 || t >= tHit) return 0.0;
-  vec3 hp = ro + rd*t - s.xyz;
-  if (abs(hp.x) >= inf.z*0.5 || abs(hp.y) >= inf.w*0.5) return 0.0;
-  vec2 luv = vec2(hp.x/inf.z + 0.5, -hp.y/inf.w + 0.5);
-  float tear = step(0.975, h12(vec2(floor(luv.y*18.0)+inf.y, floor(uTime*13.0))));
-  luv.x = fract(luv.x + tear*0.05);
-  vec4 m = texture2D(uBoard, vec2(luv.x, (inf.x + luv.y)/${ROWS}.0));
-  if (m.a < 0.4) return 0.0;
-  float flick = 0.8 + 0.2*step(0.06, h11(floor(uTime*28.0) + inf.y));
-  float drop = step(0.03, h11(floor(uTime*6.0) + inf.y*3.1));
-  col = m.rgb * 2.2 * flick * drop;
-  return 1.0;
-}
+#define NBEAM ${NBEAM}
+#define GRID ${GRID}.0
+#define ROWS ${ROWS}.0
 `;
-
-const fragFog = common + `
-void main(){
-  vec3 ro = uCamPos;
-  vec3 rd = rayDir();
-
-  float tHit = FAR; vec3 sigCol = vec3(0.0); float hit = 0.0;
-
-  // random QR / text panels (opaque)
-  for(int i=0;i<NS;i++){
-    vec4 s = uSigns[i]; vec4 inf = uInfo[i];
-    float yaw = s.w;
-    vec3 n = vec3(sin(yaw), 0.0, cos(yaw));
-    vec3 right = vec3(cos(yaw), 0.0, -sin(yaw));
-    float dn = dot(rd, n);
-    if (abs(dn) < 1e-4) continue;
-    float t = dot(s.xyz - ro, n) / dn;
-    if (t <= 0.05 || t >= tHit) continue;
-    vec3 hp = ro + rd*t - s.xyz;
-    float half_ = inf.z*0.5;
-    float u = dot(hp, right), v = hp.y;
-    if (abs(u) < half_ && abs(v) < half_){
-      vec2 luv = vec2(u, -v)/inf.z + 0.5;
-      float tear = step(0.985, h12(vec2(floor(luv.y*24.0)+inf.y, floor(uTime*15.0))));
-      luv.x = fract(luv.x + tear*0.08);
-      float idx = inf.x;
-      vec2 cellUV = (vec2(mod(idx, ${GRID}.0), floor(idx/${GRID}.0)) + luv) / ${GRID}.0;
-      float m = texture2D(uAtlas, cellUV).r;
-      float flick = 0.75 + 0.25*step(0.08, h11(floor(uTime*30.0) + inf.y));
-      sigCol = vec3(m) * (1.9*flick);
-      tHit = t; hit = 1.0;
-    }
-  }
-
-  // big heading signs, blocky like the fog
-  for(int i=0;i<NB;i++){
-    if (uHi[i] > 0.5) continue;
-    vec3 c; float t;
-    if (billHit(i, ro, rd, tHit, c, t) > 0.5) { sigCol = c; tHit = t; hit = 1.0; }
-  }
-
-  // small text planes: remember where they are so pass 2 can composite against the fog
-  float tTag = FAR;
-  for(int i=0;i<NB;i++){
-    if (uHi[i] < 0.5) continue;
-    vec4 s = uBill[i]; vec4 inf = uBillInfo[i];
-    float t = (s.z - ro.z) / rd.z;
-    if (rd.z >= -1e-4 || t <= 0.05 || t >= tHit) continue;
-    vec3 hp = ro + rd*t - s.xyz;
-    if (abs(hp.x) < inf.z*0.5 && abs(hp.y) < inf.w*0.5) tTag = min(tTag, t);
-  }
-
-  float jit = h12(gl_FragCoord.xy + fract(uTime)*137.0);
-  float t = 0.15 + jit*0.25;
-  float T = 1.0, acc = 0.0, Tt = 0.0;
-  for(int i=0;i<STEPS;i++){
-    if (t > tHit || T < 0.02) break;
-    if (t >= tTag && Tt == 0.0) Tt = max(T, 0.004);
-    vec3 p = ro + rd*t;
-    float dens = density(p);
-    vec2 b = beams(p);
-    float light = (0.03 + b.x) * exp(-b.y*2.5);
-    float sl = 0.2 + t*0.05;
-    acc += T * dens * light * sl;
-    T *= exp(-dens * sl * 0.42);
-    t += sl;
-  }
-  if (tTag < tHit && Tt == 0.0) Tt = max(T, 0.004);
-  float fog = 1.0 - exp(-acc*3.2);
-  vec3 col = vec3(fog) + (0.25 + 0.75*T) * sigCol * hit;
-
-  float inv = step(0.975, h11(floor(uTime*4.0)));
-  col = mix(col, 1.0 - col, inv);
-
-  float grain = h12(gl_FragCoord.xy + uTime*61.0);
-  col = floor(col*9.0 + grain*0.8)/9.0;
-  col *= 0.92 + 0.08*step(0.5, fract(gl_FragCoord.y*0.5));
-  float vig = 1.0 - 0.55*dot(vUv-0.5, vUv-0.5)*2.2;
-  col *= vig;
-  col *= 1.0 - uDim;
-  gl_FragColor = vec4(clamp(col,0.0,1.0), Tt);
-}`;
-
-const fragHi = common + `
-uniform sampler2D uFog;
-void main(){
-  vec4 f = texture2D(uFog, vUv);
-  vec3 ro = uCamPos;
-  vec3 rd = rayDir();
-  vec3 sigCol = vec3(0.0); float hit = 0.0, tHit = FAR;
-  for(int i=0;i<NB;i++){
-    if (uHi[i] < 0.5) continue;
-    vec3 c; float t;
-    if (billHit(i, ro, rd, tHit, c, t) > 0.5) { sigCol = c; tHit = t; hit = 1.0; }
-  }
-  float Tt = f.a;
-  vec3 L = (0.25 + 0.75*Tt) * sigCol * hit * step(0.002, Tt);
-  // match the fog pass: scanlines on its pixel grid, vignette, dim, frame inversion
-  L *= 0.92 + 0.08*step(0.5, fract(floor(vUv.y*uRes.y)*0.5 + 0.25));
-  L *= 1.0 - 0.55*dot(vUv-0.5, vUv-0.5)*2.2;
-  L *= 1.0 - uDim;
-  float inv = step(0.975, h11(floor(uTime*4.0)));
-  vec3 col = f.rgb + L * (1.0 - 2.0*inv);
-  gl_FragColor = vec4(clamp(col,0.0,1.0), 1.0);
-}`;
-const vert = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+async function loadShaders() {
+  const get = f => fetch("shaders/" + f).then(r => { if (!r.ok) throw new Error(f + " " + r.status); return r.text(); });
+  const [common, fog, text, vert] = await Promise.all([get("common.glsl"), get("fog.frag"), get("text.frag"), get("quad.vert")]);
+  return { fragFog: DEFINES + common + fog, fragHi: DEFINES + common + text, vert };
+}
 
 // ---------------------------------------------------------------- setup
-function start() {
+function start({ fragFog, fragHi, vert }) {
   const host = document.getElementById("void");
   let renderer;
   try {
@@ -446,4 +268,4 @@ function start() {
   requestAnimationFrame(frame);
 }
 
-start();
+loadShaders().then(start, err => { console.error(err); document.body.classList.add("nogl"); });

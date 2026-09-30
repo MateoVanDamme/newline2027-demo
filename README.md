@@ -13,12 +13,13 @@ Landing page for Hackerspace Gent's NewLine event, a show and tell for hackers, 
 - No webfonts: headings use a procedural 5x7 block-stencil typeface drawn on canvas (`blockfont.js`), Courier for everything else
 - Live schedule pulled from pretalx (`schedule-data.js`)
 
-Just open `index.html` in a browser. The void needs WebGL; it scales its own render resolution to keep the frame rate up.
+Serve the folder over http (VS Code Live Server, `python -m http.server`, GitHub Pages); the shaders are fetched at startup so `file://` will not work. The void needs WebGL. The fog renders at a fixed fraction of the screen (`FOG_SCALE` at the top of `main.js`), the small text is drawn at full resolution on top.
 
 ## Files
 
 - `index.html`, `style.css`, `script.js`: the landing page
-- `main.js`: the three.js scene. `SIGNS` = random panels, `BOARDS` = the heading signs per section
+- `main.js`: the three.js scene. Tunables at the top; `SIGNS` = random panels, `BOARDS` = the heading signs per section (`hi: true` = drawn at full res)
+- `shaders/`: `common.glsl` (noise, beams, sign intersection), `fog.frag` (low-res pass), `text.frag` (full-res small text pass), `quad.vert`
 - `schedule.html`, `upnext.html`: full schedule and "up next" screen for on site
 - `newline-2027.ics`: calendar file
 
