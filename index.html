@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NewLine 2027</title>
+    <meta name="description" content="NewLine 2027: a show and tell for hackers, makers and tinkerers at Hackerspace Gent. 28-29-30 May 2027.">
+    <link rel="icon" type="image/png" href="img/favicon.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="void" aria-hidden="true"></div>
+    <div class="scanlines" aria-hidden="true"></div>
+
+    <!-- HUD -->
+    <div class="hud hud-tl" aria-hidden="true">HSG // NEWLINE // 2027</div>
+    <div class="hud hud-tr" aria-hidden="true"><span id="sig">SIG 00</span></div>
+    <div class="hud hud-bl" aria-hidden="true"><span id="odo">DIST 000000</span> <b></b></div>
+    <div class="hud hud-br" aria-hidden="true"><span id="stat"></span></div>
+
+    <main>
+
+        <!-- HERO: the sign is rendered inside the void, nothing else -->
+        <section class="s hero" id="hero" data-sign="hero">
+            <h1 class="sr">Hackerspace.gent's NewLine 2027</h1>
+            <div class="scroll-hint" aria-hidden="true"><span>SCROLL TO FLY</span><i></i></div>
+        </section>
+
+        <section class="s" id="when" data-sign="when" data-label="SIG 01 WHEN">
+            <h2 class="sr">28, 29 and 30 May 2027</h2>
+            <div class="readout">
+                <p class="r" data-decode>WIEDAUWKAAI 51 / 9000 GENT / BELGIUM</p>
+                <p class="r" data-decode>FRIDAY EVENING TO SUNDAY EVENING. FREE ENTRY.</p>
+                <p class="r" data-decode>DRINKS AND FOOD AT FAIR PRICES.</p>
+                <p class="links">
+                    <a class="k" href="newline-2027.ics">[ ADD TO CALENDAR ]</a>
+                    <a class="k" href="https://cfp.hackerspace.gent" target="_blank" rel="noopener">[ SUBMIT A TALK OR WORKSHOP ]</a>
+                </p>
+            </div>
+        </section>
+
+        <section class="s" id="what" data-sign="what" data-label="SIG 02 WHAT">
+            <h2 class="sr">A show and tell for hackers, makers and tinkerers of all shapes and kinds</h2>
+            <div class="readout">
+                <p class="r" data-decode>OF ALL SHAPES AND KINDS.</p>
+                <p class="r">NewLine is back for its 2027 edition. Three days of creativity, technology and community at Hackerspace Gent. The event is free to attend. Drinks and food available at fair prices.</p>
+                <p class="r">Whether you're building robots, writing code, soldering circuits, designing 3D models or tinkering with anything in between, this is your space to share your passion and learn from others.</p>
+            </div>
+        </section>
+
+        <section class="s tall" id="program" data-sign="program" data-label="SIG 03 PROGRAM">
+            <h2 class="sr">Program</h2>
+            <div class="board" id="program-board">
+                <div class="day">FRI 28 MAY</div>
+                <div class="row"><span class="t" data-decode>18:00 - 02:00</span><span class="lead"></span><span class="n" data-decode>SOCIAL &amp; RETRO GAMING</span></div>
+                <div class="row" data-djs-day="2027-05-28"><span class="t" data-decode>20:00 - 02:00</span><span class="lead"></span><span class="n" data-decode>SILENT DISCO</span></div>
+
+                <div class="day">SAT 29 MAY</div>
+                <div class="row"><span class="t" data-decode>13:00 - 18:00</span><span class="lead"></span><span class="n" data-decode>TALKS &amp; WORKSHOPS</span></div>
+                <div class="row"><span class="t" data-decode>18:00 - 20:00</span><span class="lead"></span><span class="n" data-decode>DINNER</span></div>
+                <div class="row"><span class="t" data-decode>20:00 - 02:00</span><span class="lead"></span><span class="n" data-decode>TALKS &amp; HACKERSHOPS</span></div>
+                <div class="row"><span class="t" data-decode>ALL DAY</span><span class="lead"></span><span class="n" data-decode>RETRO GAMING</span></div>
+
+                <div class="day">SUN 30 MAY</div>
+                <div class="row"><span class="t" data-decode>13:00 - 18:00</span><span class="lead"></span><span class="n" data-decode>TALKS &amp; WORKSHOPS</span></div>
+                <div class="row"><span class="t" data-decode>ALL DAY</span><span class="lead"></span><span class="n" data-decode>RETRO GAMING</span></div>
+            </div>
+
+            <div class="board" id="schedule"
+                 data-schedule-url="https://cfp.hackerspace.gent/newline-2027/schedule/export/schedule.json"
+                 data-schedule-page="https://cfp.hackerspace.gent/newline-2027/schedule/">
+                <div class="day">TALKS &amp; WORKSHOPS</div>
+                <div class="row status"><span class="n">LOADING SCHEDULE...</span></div>
+            </div>
+            <p class="note">* PRELIMINARY SCHEDULE, MINOR CHANGES POSSIBLE</p>
+        </section>
+
+        <section class="s tall" id="where" data-sign="where" data-label="SIG 04 WHERE">
+            <h2 class="sr">How to get there</h2>
+            <div class="readout">
+                <p class="r big" data-decode>WIEDAUWKAAI 51, 9000 GENT, BELGIUM</p>
+            </div>
+            <div class="board">
+                <div class="day">BY AIR</div>
+                <div class="row"><span class="t">BRU</span><span class="lead"></span><span class="n">Brussels Airport, 55 km, main international hub. Direct trains to Gent-Sint-Pieters (~1 hour).</span></div>
+                <div class="row"><span class="t">CRL</span><span class="lead"></span><span class="n">Brussels South Charleroi, 100 km, budget airlines. Direct flibco shuttle bus to Gent.</span></div>
+                <div class="day">BY TRAIN</div>
+                <div class="row"><span class="t">STATION</span><span class="lead"></span><span class="n">Gent is well-connected by train. The main station is Gent-Sint-Pieters.</span></div>
+                <div class="row"><span class="t">TRAM T4</span><span class="lead"></span><span class="n">From Gent-Sint-Pieters, get off at Muidebrug.</span></div>
+                <div class="row"><span class="t">BUS 55</span><span class="lead"></span><span class="n">From Gent-Sint-Pieters, get off at Wiedauwkaai.</span></div>
+            </div>
+            <div class="map">
+                <iframe
+                    title="Map of Hackerspace Gent"
+                    frameborder="0"
+                    scrolling="no"
+                    loading="lazy"
+                    src="https://www.openstreetmap.org/export/embed.html?bbox=3.7214%2C51.0718%2C3.7274%2C51.0778&layer=mapnik&marker=51.0747727%2C3.7244256">
+                </iframe>
+            </div>
+            <p class="links"><a class="k" href="https://www.openstreetmap.org/node/10779879231" target="_blank" rel="noopener">[ OPEN MAP ]</a></p>
+        </section>
+
+        <section class="s" id="contact" data-sign="contact" data-label="SIG 05 CONTACT">
+            <h2 class="sr">Get in touch</h2>
+            <div class="board">
+                <div class="row"><span class="t">MASTODON</span><span class="lead"></span><span class="n"><a href="https://chaos.social/@hsg" target="_blank" rel="me">@hsg@chaos.social</a></span></div>
+                <div class="row"><span class="t">MATTERMOST</span><span class="lead"></span><span class="n"><a href="https://chat.hackerspace.gent" target="_blank" rel="noopener">chat.hackerspace.gent</a></span></div>
+                <div class="row"><span class="t">EMAIL</span><span class="lead"></span><span class="n"><a href="mailto:info@hackerspace.gent">info@hackerspace.gent</a></span></div>
+                <div class="row"><span class="t">SPACE</span><span class="lead"></span><span class="n"><a href="https://hackerspace.gent" target="_blank" rel="noopener">hackerspace.gent</a></span></div>
+            </div>
+        </section>
+
+        <section class="s end" id="end" data-sign="end" data-label="SIG 06 EOT">
+            <h2 class="sr">End of transmission</h2>
+        </section>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+    <script src="blockfont.js"></script>
+    <script src="main.js"></script>
+    <script src="schedule-data.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
