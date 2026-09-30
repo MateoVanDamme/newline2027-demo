@@ -4,6 +4,12 @@
 // Scrolling the page flies the camera forward; each section's sign waits
 // ahead in the void and is passed as you scroll through it.
 
+// ---------------------------------------------------------------- tunables
+const FOG_SCALE = 0.4;      // render resolution of the fog + big signs (0..1). Lower = chunkier blocks. Small text is always full res.
+const BASE_SPEED = 4;        // constant forward drift, units per second
+const UNITS_PER_VH = 22;     // one viewport of scrolling = this many units of flight
+const AHEAD = 6.5;           // how far ahead a section's sign hangs when that section is at the top of the screen
+
 // ---------------------------------------------------------------- random QR / text signs
 const SIGNS = [
   { qr: "https://newline.gent" },
@@ -73,7 +79,7 @@ const ROWS = 16, ROW_H = 256, ROW_W = 2048;
 const BOARDS = [
   { section: "hero",    text: "NEWLINE",                       tw: 8.2, y: 0.9 },
   { section: "hero",    kind: "year",                          tw: 8.2, y: -0.9 },
-  { section: "hero",    kind: "tags",                          tw: 5.0, y: -2.1 },
+  { section: "hero",    kind: "tags",  hi: true,               tw: 5.0, y: -2.1 },
   { section: "when",    text: "28.29.30 MAY 2027",             tw: 7.8, y: 2.6 },
   { section: "what",    text: "SHOW + TELL",                   tw: 6.0, y: 3.6 },
   { section: "what",    text: "FOR HACKERS MAKERS",            tw: 6.4, y: 2.6 },
@@ -82,7 +88,7 @@ const BOARDS = [
   { section: "where",   text: "HOW TO GET THERE",              tw: 7.0, y: 2.6 },
   { section: "contact", text: "GET IN TOUCH",                  tw: 6.0, y: 2.6 },
   { section: "end",     text: "END OF TRANSMISSION",           tw: 7.2, y: 0.5 },
-  { section: "end",     kind: "tags2",                         tw: 5.0, y: -0.8 },
+  { section: "end",     kind: "tags2", hi: true,               tw: 5.0, y: -0.8 },
 ];
 const NB = BOARDS.length;
 
@@ -108,7 +114,7 @@ function buildBoardAtlas() {
     }
     if (b.kind === "tags" || b.kind === "tags2") {
       const txt = b.kind === "tags" ? "HSG // 0X20 // SHOW + TELL // FREE ENTRY" : "SEE YOU IN THE VOID // NEWLINE.GENT";
-      const ch = F.fit(txt, 1900, 96);
+      const ch = F.fit(txt, 1960, 130);
       const tw = F.width(txt, ch), th = F.height(ch);
       F.draw(g, txt, ROW_W / 2 - tw / 2, top + ROW_H / 2 - th / 2, ch, { outline: 6, cut: 0, skew: 0.1 });
       b.frac = tw / ROW_W;
@@ -125,9 +131,12 @@ function buildBoardAtlas() {
   return tex;
 }
 
-// ---------------------------------------------------------------- shader
+// ---------------------------------------------------------------- shaders
+// Pass 1 (low res, blocky): fog, beams, QR panels and the big heading signs. Alpha = fog
+// transmittance at the small-text sign planes.
+// Pass 2 (full res): only the small text (BOARDS with hi: true), composited over pass 1.
 const NS = 12, NBEAM = 5;
-const frag = `
+const common = `
 precision highp float;
 #define NS ${NS}
 #define NB ${NB}
@@ -135,7 +144,7 @@ precision highp float;
 #define FAR 90.0
 uniform float uTime; uniform vec2 uRes; uniform vec3 uCamPos; uniform mat3 uCamRot;
 uniform sampler2D uAtlas; uniform vec4 uSigns[NS]; uniform vec4 uInfo[NS];
-uniform sampler2D uBoard; uniform vec4 uBill[NB]; uniform vec4 uBillInfo[NB];
+uniform sampler2D uBoard; uniform vec4 uBill[NB]; uniform vec4 uBillInfo[NB]; uniform float uHi[NB];
 uniform float uGlitch; uniform float uDim;
 varying vec2 vUv;
 
@@ -179,14 +188,39 @@ vec2 beams(vec3 p){
   return vec2(L, S);
 }
 
-void main(){
+// camera ray for this pixel, including the row glitch (identical in both passes)
+vec3 rayDir(){
   vec2 uv = (vUv*2.0-1.0); uv.x *= uRes.x/uRes.y;
   float row = floor(vUv.y*48.0);
   float gl = h12(vec2(row, floor(uTime*12.0)));
   if (gl > 0.965 - uGlitch) uv.x += (h12(vec2(row, 3.0))-0.5)*0.35;
+  return uCamRot * normalize(vec3(uv, -1.45));
+}
 
+// heading sign letter test; returns 1 on a letter and sets col / t
+float billHit(int i, vec3 ro, vec3 rd, float tHit, out vec3 col, out float t){
+  vec4 s = uBill[i]; vec4 inf = uBillInfo[i];
+  col = vec3(0.0);
+  t = (s.z - ro.z) / rd.z;
+  if (rd.z >= -1e-4 || t <= 0.05 || t >= tHit) return 0.0;
+  vec3 hp = ro + rd*t - s.xyz;
+  if (abs(hp.x) >= inf.z*0.5 || abs(hp.y) >= inf.w*0.5) return 0.0;
+  vec2 luv = vec2(hp.x/inf.z + 0.5, -hp.y/inf.w + 0.5);
+  float tear = step(0.975, h12(vec2(floor(luv.y*18.0)+inf.y, floor(uTime*13.0))));
+  luv.x = fract(luv.x + tear*0.05);
+  vec4 m = texture2D(uBoard, vec2(luv.x, (inf.x + luv.y)/${ROWS}.0));
+  if (m.a < 0.4) return 0.0;
+  float flick = 0.8 + 0.2*step(0.06, h11(floor(uTime*28.0) + inf.y));
+  float drop = step(0.03, h11(floor(uTime*6.0) + inf.y*3.1));
+  col = m.rgb * 2.2 * flick * drop;
+  return 1.0;
+}
+`;
+
+const fragFog = common + `
+void main(){
   vec3 ro = uCamPos;
-  vec3 rd = uCamRot * normalize(vec3(uv, -1.45));
+  vec3 rd = rayDir();
 
   float tHit = FAR; vec3 sigCol = vec3(0.0); float hit = 0.0;
 
@@ -216,32 +250,30 @@ void main(){
     }
   }
 
-  // heading signs: only the letters exist, the void shows through around them
+  // big heading signs, blocky like the fog
   for(int i=0;i<NB;i++){
+    if (uHi[i] > 0.5) continue;
+    vec3 c; float t;
+    if (billHit(i, ro, rd, tHit, c, t) > 0.5) { sigCol = c; tHit = t; hit = 1.0; }
+  }
+
+  // small text planes: remember where they are so pass 2 can composite against the fog
+  float tTag = FAR;
+  for(int i=0;i<NB;i++){
+    if (uHi[i] < 0.5) continue;
     vec4 s = uBill[i]; vec4 inf = uBillInfo[i];
     float t = (s.z - ro.z) / rd.z;
     if (rd.z >= -1e-4 || t <= 0.05 || t >= tHit) continue;
     vec3 hp = ro + rd*t - s.xyz;
-    float u = hp.x, v = hp.y;
-    if (abs(u) < inf.z*0.5 && abs(v) < inf.w*0.5){
-      vec2 luv = vec2(u/inf.z + 0.5, -v/inf.w + 0.5);
-      float tear = step(0.975, h12(vec2(floor(luv.y*18.0)+inf.y, floor(uTime*13.0))));
-      luv.x = fract(luv.x + tear*0.05);
-      vec4 m = texture2D(uBoard, vec2(luv.x, (inf.x + luv.y)/${ROWS}.0));
-      if (m.a < 0.4) continue;
-      float flick = 0.8 + 0.2*step(0.06, h11(floor(uTime*28.0) + inf.y));
-      // occasional whole-sign dropout, like a dying neon tube
-      float drop = step(0.03, h11(floor(uTime*6.0) + inf.y*3.1));
-      sigCol = m.rgb * 2.2 * flick * drop;
-      tHit = t; hit = 1.0;
-    }
+    if (abs(hp.x) < inf.z*0.5 && abs(hp.y) < inf.w*0.5) tTag = min(tTag, t);
   }
 
   float jit = h12(gl_FragCoord.xy + fract(uTime)*137.0);
   float t = 0.15 + jit*0.25;
-  float T = 1.0, acc = 0.0;
+  float T = 1.0, acc = 0.0, Tt = 0.0;
   for(int i=0;i<STEPS;i++){
     if (t > tHit || T < 0.02) break;
+    if (t >= tTag && Tt == 0.0) Tt = max(T, 0.004);
     vec3 p = ro + rd*t;
     float dens = density(p);
     vec2 b = beams(p);
@@ -251,6 +283,7 @@ void main(){
     T *= exp(-dens * sl * 0.42);
     t += sl;
   }
+  if (tTag < tHit && Tt == 0.0) Tt = max(T, 0.004);
   float fog = 1.0 - exp(-acc*3.2);
   vec3 col = vec3(fog) + (0.25 + 0.75*T) * sigCol * hit;
 
@@ -263,6 +296,29 @@ void main(){
   float vig = 1.0 - 0.55*dot(vUv-0.5, vUv-0.5)*2.2;
   col *= vig;
   col *= 1.0 - uDim;
+  gl_FragColor = vec4(clamp(col,0.0,1.0), Tt);
+}`;
+
+const fragHi = common + `
+uniform sampler2D uFog;
+void main(){
+  vec4 f = texture2D(uFog, vUv);
+  vec3 ro = uCamPos;
+  vec3 rd = rayDir();
+  vec3 sigCol = vec3(0.0); float hit = 0.0, tHit = FAR;
+  for(int i=0;i<NB;i++){
+    if (uHi[i] < 0.5) continue;
+    vec3 c; float t;
+    if (billHit(i, ro, rd, tHit, c, t) > 0.5) { sigCol = c; tHit = t; hit = 1.0; }
+  }
+  float Tt = f.a;
+  vec3 L = (0.25 + 0.75*Tt) * sigCol * hit * step(0.002, Tt);
+  // match the fog pass: scanlines on its pixel grid, vignette, dim, frame inversion
+  L *= 0.92 + 0.08*step(0.5, fract(floor(vUv.y*uRes.y)*0.5 + 0.25));
+  L *= 1.0 - 0.55*dot(vUv-0.5, vUv-0.5)*2.2;
+  L *= 1.0 - uDim;
+  float inv = step(0.975, h11(floor(uTime*4.0)));
+  vec3 col = f.rgb + L * (1.0 - 2.0*inv);
   gl_FragColor = vec4(clamp(col,0.0,1.0), 1.0);
 }`;
 const vert = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
@@ -278,8 +334,9 @@ function start() {
     return;
   }
   host.appendChild(renderer.domElement);
-  const scene = new THREE.Scene();
+  const sceneFog = new THREE.Scene(), sceneHi = new THREE.Scene();
   const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const rt = new THREE.WebGLRenderTarget(2, 2, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false, stencilBuffer: false });
   const atlas = buildAtlas();
   const board = buildBoardAtlas();
 
@@ -301,17 +358,15 @@ function start() {
     uCamPos: { value: new THREE.Vector3() }, uCamRot: { value: new THREE.Matrix3() },
     uAtlas: { value: atlas }, uSigns: { value: signs }, uInfo: { value: info },
     uBoard: { value: board }, uBill: { value: bill }, uBillInfo: { value: billInfo },
+    uHi: { value: BOARDS.map(b => b.hi ? 1 : 0) },
     uGlitch: { value: 0 }, uDim: { value: 0 }
   };
-  const mat = new THREE.ShaderMaterial({ uniforms, vertexShader: vert, fragmentShader: frag, depthTest: false, depthWrite: false });
-  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+  const uniformsHi = Object.assign({}, uniforms, { uFog: { value: rt.texture } });   // same value objects, plus the fog texture
+  const quad = new THREE.PlaneGeometry(2, 2);
+  sceneFog.add(new THREE.Mesh(quad, new THREE.ShaderMaterial({ uniforms, vertexShader: vert, fragmentShader: fragFog, depthTest: false, depthWrite: false })));
+  sceneHi.add(new THREE.Mesh(quad, new THREE.ShaderMaterial({ uniforms: uniformsHi, vertexShader: vert, fragmentShader: fragHi, depthTest: false, depthWrite: false })));
 
   // ---------------------------------------------------------------- scroll → flight
-  const AHEAD = 6.5;                 // how far ahead a section's sign hangs when the section is on screen
-  const UNITS_PER_VH = 22;           // one viewport of scrolling = this many units of flight
-  const isSmall = Math.min(innerWidth, innerHeight) < 700;
-  let scale = isSmall ? 0.5 : 0.75;
-  const BASE_SPEED = 4;
   let boost = 0, lastScrollY = scrollY;
   let milestones = {};
 
@@ -328,8 +383,10 @@ function start() {
   }, { passive: true });
 
   function resize() {
-    const w = Math.floor(innerWidth * scale), h = Math.floor(innerHeight * scale);
-    renderer.setPixelRatio(1); renderer.setSize(w, h, false);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    renderer.setPixelRatio(1); renderer.setSize(Math.floor(innerWidth * dpr), Math.floor(innerHeight * dpr), false);
+    const w = Math.max(2, Math.floor(innerWidth * FOG_SCALE)), h = Math.max(2, Math.floor(innerHeight * FOG_SCALE));
+    rt.setSize(w, h);
     uniforms.uRes.value.set(w, h);
     measure();
   }
@@ -355,8 +412,7 @@ function start() {
 
     ftAcc += dt; if (++frames === 40) {
       const ms = ftAcc / frames * 1000;
-      if (ms > 22 && scale > 0.3) { scale -= 0.1; resize(); } else if (ms < 12 && scale < 1) { scale += 0.05; resize(); }
-      if (stat) stat.textContent = `${Math.round(1000 / ms)}FPS ${Math.round(scale * 100)}%`;
+      if (stat) stat.textContent = `${Math.round(1000 / ms)}FPS ${Math.round(FOG_SCALE * 100)}%`;
       frames = 0; ftAcc = 0;
     }
 
@@ -384,7 +440,8 @@ function start() {
 
     for (let i = 0; i < NS; i++) if (signs[i].z > cz + 1.5) randomizeSign(i, signs[i].z - NS * SPACING);
     if (odo) odo.textContent = "DIST " + String(Math.max(0, Math.floor(dist * 10))).padStart(6, "0");
-    renderer.render(scene, cam);
+    renderer.setRenderTarget(rt); renderer.render(sceneFog, cam);
+    renderer.setRenderTarget(null); renderer.render(sceneHi, cam);
   }
   requestAnimationFrame(frame);
 }
